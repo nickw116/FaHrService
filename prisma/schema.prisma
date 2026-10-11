@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Brand {
+  id     Int    @id @default(autoincrement())
+  name   String @unique
+  cities City[]
+
+  @@map("brands")
+}
+
+model City {
+  id      Int     @id @default(autoincrement())
+  name    String
+  brand   Brand   @relation(fields: [brandId], references: [id])
+  brandId Int
+  stores  Store[]
+
+  @@unique([brandId, name])
+  @@map("cities")
+}
+
+model Store {
+  id         Int         @id @default(autoincrement())
+  name       String
+  city       City        @relation(fields: [cityId], references: [id])
+  cityId     Int
+  candidates Candidate[]
+
+  @@unique([cityId, name])
+  @@map("stores")
+}
+
+model Candidate {
+  id        Int      @id @default(autoincrement())
+  name      String
+  phone     String   @default("")
+  status    String   @default("PENDING_CONFIRMATION")
+  remark    String   @default("")
+  store     Store    @relation(fields: [storeId], references: [id])
+  storeId   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("candidates")
+}
