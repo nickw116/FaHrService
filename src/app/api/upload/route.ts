@@ -10,7 +10,7 @@ const MIME_EXT: Record<string, string> = {
   "image/webp": ".webp",
 };
 
-const MAX_SIZE = 5 * 1024 * 1024;
+const MAX_SIZE = 10 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "仅支持 JPG/PNG/GIF/WebP 图片" }, { status: 400 });
   }
   if (file.size > MAX_SIZE) {
-    return NextResponse.json({ error: "图片不能超过 5MB" }, { status: 400 });
+    return NextResponse.json({ error: "图片不能超过 10MB" }, { status: 400 });
   }
 
   const dir = path.join(process.cwd(), "uploads");

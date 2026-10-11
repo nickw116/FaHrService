@@ -535,7 +535,13 @@ function CandidateFormModal({
       if (!r.ok) throw new Error(d.error || "上传失败");
       patch({ photo: d.url });
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "上传失败");
+      setFormError(
+        err instanceof TypeError
+          ? "网络连接失败（Failed to fetch），请刷新页面后重试"
+          : err instanceof Error
+            ? err.message
+            : "上传失败",
+      );
     } finally {
       setUploading(false);
     }
