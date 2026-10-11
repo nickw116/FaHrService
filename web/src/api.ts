@@ -1,5 +1,11 @@
+const BASE = import.meta.env.BASE_URL;
+
+export function withBase(p: string): string {
+  return BASE + p.replace(/^\/+/, "");
+}
+
 export async function api<T = unknown>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
+  const res = await fetch(withBase(url), options);
   let data: unknown = null;
   try {
     data = await res.json();

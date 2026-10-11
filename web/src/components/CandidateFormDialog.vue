@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { ElMessage, type UploadRequestOptions } from "element-plus";
-import { api } from "../api";
+import { api, withBase } from "../api";
 import type { BrandNode, CandidateRow } from "../types";
 
 const props = defineProps<{
@@ -208,7 +208,7 @@ async function submit() {
     <el-form label-width="90px" label-position="left">
       <el-form-item label="照片">
         <div class="photo-row">
-          <el-avatar v-if="form.photo" :size="64" :src="form.photo" />
+          <el-avatar v-if="form.photo" :size="64" :src="withBase(form.photo)" />
           <el-upload
             :show-file-list="false"
             accept="image/jpeg,image/png,image/gif,image/webp"

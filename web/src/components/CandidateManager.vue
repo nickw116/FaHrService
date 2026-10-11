@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { api } from "../api";
+import { api, withBase } from "../api";
 import type { BrandNode, CandidateRow } from "../types";
 import CandidateFormDialog from "./CandidateFormDialog.vue";
 
@@ -168,7 +168,7 @@ onMounted(() => {
       <el-table v-loading="loading" :data="candidates" stripe>
         <el-table-column label="照片" width="70" align="center">
           <template #default="{ row }">
-            <el-avatar :size="36" :src="row.photo || undefined">{{ row.name.slice(0, 1) }}</el-avatar>
+            <el-avatar :size="36" :src="row.photo ? withBase(row.photo) : undefined">{{ row.name.slice(0, 1) }}</el-avatar>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="姓名" width="90" />
