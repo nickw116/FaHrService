@@ -226,12 +226,6 @@ export default function CandidateManager() {
           placeholder="搜索人员姓名…"
           className={`${inputClass} w-52`}
         />
-        <button
-          onClick={handleSearch}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          搜索
-        </button>
         <select
           value={brandId}
           onChange={(e) => {
@@ -282,7 +276,12 @@ export default function CandidateManager() {
             </option>
           ))}
         </select>
-        <span className="ml-auto text-sm text-gray-500">共 {total} 人</span>
+        <button
+          onClick={handleSearch}
+          className="ml-auto rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          搜索
+        </button>
       </div>
 
       {error && (
