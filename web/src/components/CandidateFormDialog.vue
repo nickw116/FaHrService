@@ -265,6 +265,9 @@ async function submit() {
           <div v-for="(w, i) in form.workExperiences" :key="i" class="work-item">
             <div class="work-row">
               <el-input v-model="w.company" placeholder="公司名称" class="company-input" />
+              <el-button link type="danger" @click="removeWork(i)">删除</el-button>
+            </div>
+            <div class="work-row">
               <el-date-picker
                 v-model="w.startDate"
                 type="month"
@@ -280,7 +283,6 @@ async function submit() {
                 placeholder="结束（留空至今）"
                 class="month-picker"
               />
-              <el-button link type="danger" @click="removeWork(i)">删除</el-button>
             </div>
             <el-input
               v-model="w.description"
@@ -300,6 +302,7 @@ async function submit() {
             <el-date-picker
               v-model="form.slots[i]"
               type="datetimerange"
+              format="YYYY-MM-DD HH:mm"
               value-format="YYYY-MM-DD HH:mm"
               range-separator="至"
               start-placeholder="开始时间"
@@ -348,14 +351,18 @@ async function submit() {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+.work-row + .work-row {
+  margin-top: 8px;
 }
 .company-input {
   flex: 1;
-  min-width: 140px;
+  min-width: 0;
 }
 .month-picker {
-  width: 150px;
+  width: 160px;
+  flex: none;
 }
 .sep {
   color: #909399;
@@ -368,9 +375,10 @@ async function submit() {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .range-picker {
-  max-width: 400px;
+  flex: 1;
+  max-width: 420px;
 }
 </style>
