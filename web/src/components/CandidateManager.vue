@@ -12,6 +12,7 @@ const loading = ref(false);
 const keywordInput = ref("");
 const keyword = ref("");
 const filterPath = ref<number[] | undefined>();
+const appliedPath = ref<number[] | undefined>();
 const page = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
@@ -61,7 +62,7 @@ async function load() {
   try {
     const params = new URLSearchParams();
     if (keyword.value) params.set("keyword", keyword.value);
-    const [brandId, cityId, storeId] = filterPath.value ?? [];
+    const [brandId, cityId, storeId] = appliedPath.value ?? [];
     if (brandId) params.set("brandId", String(brandId));
     if (cityId) params.set("cityId", String(cityId));
     if (storeId) params.set("storeId", String(storeId));
@@ -82,11 +83,7 @@ async function load() {
 function handleSearch() {
   page.value = 1;
   keyword.value = keywordInput.value.trim();
-  load();
-}
-
-function handleFilterChange() {
-  page.value = 1;
+  appliedPath.value = filterPath.value;
   load();
 }
 
@@ -154,7 +151,6 @@ onMounted(() => {
           clearable
           class="keyword-input"
           @keyup.enter="handleSearch"
-          @clear="handleSearch"
         />
         <el-cascader
           v-model="filterPath"
@@ -163,7 +159,6 @@ onMounted(() => {
           placeholder="品牌 / 城市 / 店铺"
           clearable
           class="filter-cascader"
-          @change="handleFilterChange"
         />
         <el-button type="primary" class="search-btn" @click="handleSearch">搜索</el-button>
       </div>
