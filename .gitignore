@@ -8,6 +8,9 @@ web/dist
 .DS_Store
 *.pem
 
+# workbuddy workspace data
+.workbuddy/
+
 # debug
 npm-debug.log*
 
