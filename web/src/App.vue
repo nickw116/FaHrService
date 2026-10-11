@@ -7,6 +7,12 @@ import CandidateManager from "./components/CandidateManager.vue";
 </template>
 
 <style>
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   background-color: #f5f7fa;
