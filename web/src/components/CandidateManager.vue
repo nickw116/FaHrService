@@ -134,15 +134,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <div class="header">
-      <div>
-        <h2 class="title">人员管理</h2>
-        <p class="sub">品牌 → 城市 → 店铺 三级架构 HR 人员录入系统</p>
-      </div>
-      <el-button type="primary" @click="openCreate">+ 新增人员</el-button>
-    </div>
-
+  <div>
     <el-card class="filter-card" shadow="never">
       <div class="filter-bar">
         <el-input
@@ -165,6 +157,10 @@ onMounted(() => {
     </el-card>
 
     <el-card shadow="never">
+      <div class="toolbar">
+        <span class="card-title">人员列表</span>
+        <el-button type="primary" @click="openCreate">+ 新增人员</el-button>
+      </div>
       <el-table v-loading="loading" :data="candidates" stripe>
         <el-table-column label="照片" width="70" align="center">
           <template #default="{ row }">
@@ -237,28 +233,18 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px 16px;
+.filter-card {
+  margin-bottom: 16px;
 }
-.header {
+.toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
-.title {
-  margin: 0;
-  font-size: 22px;
-}
-.sub {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #909399;
-}
-.filter-card {
-  margin-bottom: 16px;
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
 }
 .filter-bar {
   display: flex;

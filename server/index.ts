@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { candidateInclude, parseCandidateInput } from "./candidateInput.js";
 
@@ -16,6 +16,12 @@ const PORT = Number(process.env.PORT) || (isProd ? 3000 : 3001);
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
+
+// 生产环境通过 nginx 以 /faHr/ 前缀访问；本地直跑时剥掉该前缀，保持两种路径都可用
+app.use((req, _res, next) => {
+  if (req.path.startsWith("/faHr/api/")) req.url = req.url.slice(5);
+  next();
+});
 
 type Handler = (req: Request, res: Response) => Promise<void> | void;
 const h =
@@ -33,10 +39,154 @@ app.get(
     const brands = await prisma.brand.findMany({
       orderBy: { id: "asc" },
       include: {
-        cities: { orderBy: { id: "asc" }, include: { stores: { orderBy: { id: "asc" } } } },
+        cities: {
+          orderBy: { id: "asc" },
+          include: {
+            stores: {
+              orderBy: { id: "asc" },
+              include: { _count: { select: { candidates: true } } },
+            },
+          },
+        },
       },
     });
     res.json({ brands });
+  }),
+);
+
+function validName(body: unknown): string | null {
+  const name = String((body as Record<string, unknown> | null)?.name ?? "").trim();
+  return name || null;
+}
+
+function isDupError(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+}
+
+function isMissingError(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025";
+}
+
+const ORG_LEVELS = {
+  brands: {
+    label: "品牌",
+    create: (name: string, _parentId = 0) => prisma.brand.create({ data: { name } }),
+    update: (id: number, name: string) => prisma.brand.update({ where: { id }, data: { name } }),
+    delete: (id: number) => prisma.brand.delete({ where: { id } }),
+    childCount: (id: number) => prisma.city.count({ where: { brandId: id } }),
+    childLabel: "城市",
+  },
+  cities: {
+    label: "城市",
+    create: (name: string, parentId = 0) =>
+      prisma.city.create({ data: { name, brandId: parentId } }),
+    update: (id: number, name: string) => prisma.city.update({ where: { id }, data: { name } }),
+    delete: (id: number) => prisma.city.delete({ where: { id } }),
+    childCount: (id: number) => prisma.store.count({ where: { cityId: id } }),
+    childLabel: "店铺",
+  },
+  stores: {
+    label: "店铺",
+    create: (name: string, parentId = 0) =>
+      prisma.store.create({ data: { name, cityId: parentId } }),
+    update: (id: number, name: string) => prisma.store.update({ where: { id }, data: { name } }),
+    delete: (id: number) => prisma.store.delete({ where: { id } }),
+    childCount: (id: number) => prisma.candidate.count({ where: { storeId: id } }),
+    childLabel: "人员",
+  },
+} as const;
+
+type OrgLevel = keyof typeof ORG_LEVELS;
+
+function parseLevel(value: string): OrgLevel | null {
+  return value in ORG_LEVELS ? (value as OrgLevel) : null;
+}
+
+app.post(
+  "/api/org/:level",
+  h(async (req, res) => {
+    const level = parseLevel(req.params.level);
+    const name = validName(req.body);
+    if (!level || !name) {
+      res.status(400).json({ error: "参数不合法" });
+      return;
+    }
+    const cfg = ORG_LEVELS[level];
+    const parentId = parseId((req.body as Record<string, unknown>)?.parentId) ?? 0;
+    if (level !== "brands" && !parentId) {
+      res.status(400).json({ error: "缺少上级节点" });
+      return;
+    }
+    try {
+      const node = await cfg.create(name, parentId);
+      res.status(201).json({ node });
+    } catch (e) {
+      if (isDupError(e)) {
+        res.status(400).json({ error: `${cfg.label}名称已存在` });
+        return;
+      }
+      if (isMissingError(e)) {
+        res.status(400).json({ error: "上级节点不存在" });
+        return;
+      }
+      throw e;
+    }
+  }),
+);
+
+app.put(
+  "/api/org/:level/:id",
+  h(async (req, res) => {
+    const level = parseLevel(req.params.level);
+    const id = parseId(req.params.id);
+    const name = validName(req.body);
+    if (!level || !id || !name) {
+      res.status(400).json({ error: "参数不合法" });
+      return;
+    }
+    const cfg = ORG_LEVELS[level];
+    try {
+      const node = await cfg.update(id, name);
+      res.json({ node });
+    } catch (e) {
+      if (isDupError(e)) {
+        res.status(400).json({ error: `${cfg.label}名称已存在` });
+        return;
+      }
+      if (isMissingError(e)) {
+        res.status(404).json({ error: `${cfg.label}不存在` });
+        return;
+      }
+      throw e;
+    }
+  }),
+);
+
+app.delete(
+  "/api/org/:level/:id",
+  h(async (req, res) => {
+    const level = parseLevel(req.params.level);
+    const id = parseId(req.params.id);
+    if (!level || !id) {
+      res.status(400).json({ error: "参数不合法" });
+      return;
+    }
+    const cfg = ORG_LEVELS[level];
+    const children = await cfg.childCount(id);
+    if (children > 0) {
+      res.status(400).json({ error: `该${cfg.label}下还有 ${children} 个${cfg.childLabel}，无法删除` });
+      return;
+    }
+    try {
+      await cfg.delete(id);
+      res.json({ ok: true });
+    } catch (e) {
+      if (isMissingError(e)) {
+        res.status(404).json({ error: `${cfg.label}不存在` });
+        return;
+      }
+      throw e;
+    }
   }),
 );
 
@@ -201,13 +351,16 @@ app.use("/api", (_req, res) => {
 
 if (isProd) {
   const distDir = path.join(rootDir, "web", "dist");
-  app.use(express.static(distDir));
+  app.use("/faHr", express.static(distDir));
   app.use((req, res, next) => {
-    if (req.method === "GET") {
+    if (req.method === "GET" && req.path.startsWith("/faHr")) {
       res.sendFile(path.join(distDir, "index.html"));
-    } else {
-      next();
+      return;
     }
+    next();
+  });
+  app.get("/", (_req, res) => {
+    res.redirect("/faHr/");
   });
 }
 

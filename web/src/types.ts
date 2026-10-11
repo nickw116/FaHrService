@@ -1,6 +1,7 @@
 export interface StoreNode {
   id: number;
   name: string;
+  _count?: { candidates: number };
 }
 
 export interface CityNode {
