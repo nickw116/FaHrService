@@ -38,15 +38,41 @@ model Store {
 }
 
 model Candidate {
-  id        Int      @id @default(autoincrement())
-  name      String
-  phone     String   @default("")
-  status    String   @default("PENDING_CONFIRMATION")
-  remark    String   @default("")
-  store     Store    @relation(fields: [storeId], references: [id])
-  storeId   Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              Int              @id @default(autoincrement())
+  name            String
+  gender          String           @default("MALE")
+  age             Int?
+  phone           String           @default("")
+  photo           String           @default("")
+  remark          String           @default("")
+  store           Store            @relation(fields: [storeId], references: [id])
+  storeId         Int
+  workExperiences WorkExperience[]
+  interviewSlots  InterviewSlot[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@map("candidates")
+}
+
+model WorkExperience {
+  id          Int       @id @default(autoincrement())
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId Int
+  company     String
+  startDate   String    @default("")
+  endDate     String    @default("")
+  description String    @default("")
+
+  @@map("work_experiences")
+}
+
+model InterviewSlot {
+  id          Int       @id @default(autoincrement())
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId Int
+  startAt     DateTime
+  endAt       DateTime
+
+  @@map("interview_slots")
 }
