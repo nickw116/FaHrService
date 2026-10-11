@@ -1,5 +1,5 @@
-import { Prisma } from "@prisma/client";
-import { isGender } from "@/lib/constants";
+import type { Prisma } from "@prisma/client";
+import { isGender } from "./constants.js";
 
 export const candidateInclude = {
   store: { include: { city: { include: { brand: true } } } },

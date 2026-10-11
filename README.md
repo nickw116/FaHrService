@@ -8,19 +8,18 @@
 - **人员录入**：照片上传、姓名、性别、年龄、电话、所属店铺、备注
 - **工作经历**：支持多条，每条包含公司名称、起止时间（结束留空为至今）、工作内容
 - **可面试时间**：支持多个时间区间（开始 ~ 结束）
-- **列表查询**：姓名搜索（搜索按钮 / 回车触发）、品牌/城市/店铺级联筛选、分页（10/20/50 条每页）
-- **编辑与删除**：列表每行「编辑」按钮打开回填好的编辑弹窗
+- **列表查询**：姓名搜索、品牌/城市/店铺级联筛选（可只选到品牌或城市）、分页（10/20/50 条每页）
+- **编辑与删除**：列表每行「编辑」按钮打开回填好的编辑弹窗，删除有确认提示
 
 ## 技术栈
 
-- Next.js 15 (App Router) + React 19 + TypeScript
-- Tailwind CSS v4
-- Prisma ORM + SQLite
+- 前端：Vue 3 + Vite + Element Plus（`web/`）
+- 后端：Express + Prisma ORM + SQLite（`server/`，npm workspaces 管理）
 
 ## 快速开始
 
 ```bash
-# 安装依赖
+# 安装依赖（根目录一次安装，含 web 工作区）
 npm install
 
 # 初始化数据库（在项目根目录生成 prisma/dev.db）
@@ -28,12 +27,31 @@ npm run db:push
 
 # 导入示例数据（品牌/城市/店铺 + 25 条人员数据）
 npm run db:seed
-
-# 启动开发服务器
-npm run dev
 ```
 
-访问 http://localhost:3000 即可打开管理界面。
+开发模式（前后端同时启动，前端 3000 端口，API 3001 端口，自动代理）：
+
+```bash
+npm run dev
+# 打开 http://localhost:3000
+```
+
+生产模式（构建前端后由 Express 托管，单端口 3000）：
+
+```bash
+npm run build
+npm start
+# 打开 http://localhost:3000
+```
+
+## 目录结构
+
+```
+├── prisma/            # Prisma schema、种子数据、SQLite 数据库文件
+├── server/            # Express API 服务（tsx 运行 TypeScript）
+├── web/               # Vue 3 + Element Plus 前端
+└── uploads/           # 上传的照片（已加入 .gitignore）
+```
 
 ## 数据模型
 
@@ -47,8 +65,6 @@ npm run dev
 | `InterviewSlot` | 可面试时间（多个）：开始时间、结束时间 |
 
 人员状态不在本系统维护，由后续流程系统驱动更新。
-
-上传的照片保存在项目根目录 `uploads/`（已加入 .gitignore），通过 `/api/uploads/<文件名>` 访问。
 
 ## API
 

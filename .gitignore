@@ -1,12 +1,8 @@
 # dependencies
-/node_modules
+node_modules
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
+# build output
+web/dist
 
 # misc
 .DS_Store
@@ -22,7 +18,6 @@ npm-debug.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # database
 /prisma/dev.db
