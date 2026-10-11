@@ -374,5 +374,5 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`FaHrService ${isProd ? "(生产模式)" : "(开发 API)"} 运行在 http://localhost:${PORT}`);
+  console.log(`FaHRService ${isProd ? "(生产模式)" : "(开发 API)"} 运行在 http://localhost:${PORT}`);
 });

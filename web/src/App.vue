@@ -5,7 +5,7 @@ import { OfficeBuilding, User } from "@element-plus/icons-vue";
 <template>
   <el-container class="layout">
     <el-aside width="220px" class="aside">
-      <div class="logo">FaHrService</div>
+      <div class="logo">FaHRService</div>
       <el-menu
         :default-active="$route.path"
         router
