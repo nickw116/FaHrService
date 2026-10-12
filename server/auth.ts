@@ -89,3 +89,21 @@ export async function createSession(userId: number): Promise<string> {
 export function publicUser(user: User) {
   return { id: user.id, username: user.username, role: user.role, createdAt: user.createdAt };
 }
+
+/** 返回用户被分配的店铺 id 列表；admin 返回 null 表示不限制 */
+export async function allowedStoreIds(user: User): Promise<number[] | null> {
+  if (user.role === "admin") return null;
+  const scopes = await prisma.userScope.findMany({ where: { userId: user.id } });
+  const ids = (level: string) => scopes.filter((s) => s.level === level).map((s) => s.nodeId);
+  const stores = await prisma.store.findMany({
+    where: {
+      OR: [
+        { id: { in: ids("store") } },
+        { cityId: { in: ids("city") } },
+        { city: { brandId: { in: ids("brand") } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return stores.map((s) => s.id);
+}

@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { candidateInclude, parseCandidateInput } from "./candidateInput.js";
 import {
+  allowedStoreIds,
   createSession,
   ensureDefaultAdmin,
   hashPassword,
@@ -68,7 +69,19 @@ app.get(
         },
       },
     });
-    res.json({ brands });
+    // 非管理员只能看到被分配店铺所属的品牌/城市节点
+    const scope = await allowedStoreIds((req as AuthedRequest).user!);
+    const scoped = scope
+      ? brands
+          .map((b) => ({
+            ...b,
+            cities: b.cities
+              .map((c) => ({ ...c, stores: c.stores.filter((s) => scope.includes(s.id)) }))
+              .filter((c) => c.stores.length > 0),
+          }))
+          .filter((b) => b.cities.length > 0)
+      : brands;
+    res.json({ brands: scoped });
   }),
 );
 
@@ -261,8 +274,13 @@ app.get(
   "/api/users",
   requireAdmin,
   h(async (_req, res) => {
-    const users = await prisma.user.findMany({ orderBy: { id: "asc" } });
-    res.json({ users: users.map(publicUser) });
+    const users = await prisma.user.findMany({ orderBy: { id: "asc" }, include: { scopes: true } });
+    res.json({
+      users: users.map((u) => ({
+        ...publicUser(u),
+        scopes: u.scopes.map((s) => ({ level: s.level, nodeId: s.nodeId })),
+      })),
+    });
   }),
 );
 
@@ -340,6 +358,47 @@ app.put(
       await prisma.session.deleteMany({ where: { userId: id } });
     }
     res.json({ user: publicUser(user) });
+  }),
+);
+
+app.put(
+  "/api/users/:id/scope",
+  requireAdmin,
+  h(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: "无效的用户 ID" });
+      return;
+    }
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      res.status(404).json({ error: "用户不存在" });
+      return;
+    }
+    if (target.role === "admin") {
+      res.status(400).json({ error: "管理员拥有全部权限，无需分配" });
+      return;
+    }
+    const raw = (req.body as Record<string, unknown> | null)?.scopes;
+    if (!Array.isArray(raw)) {
+      res.status(400).json({ error: "参数不合法" });
+      return;
+    }
+    const items: { level: string; nodeId: number }[] = [];
+    for (const it of raw) {
+      const level = String((it as Record<string, unknown>)?.level ?? "");
+      const nodeId = parseId((it as Record<string, unknown>)?.nodeId);
+      if (!["brand", "city", "store"].includes(level) || !nodeId) {
+        res.status(400).json({ error: "参数不合法" });
+        return;
+      }
+      items.push({ level, nodeId });
+    }
+    await prisma.$transaction([
+      prisma.userScope.deleteMany({ where: { userId: id } }),
+      prisma.userScope.createMany({ data: items.map((s) => ({ userId: id, ...s })) }),
+    ]);
+    res.json({ ok: true });
   }),
 );
 
@@ -550,6 +609,11 @@ app.get(
     if (req.query.published === "1" || role === "manager" || role === "hr") {
       where.resumeToken = { not: null };
     }
+    // 非管理员只能看到被分配店铺的人员
+    const scope = await allowedStoreIds((req as AuthedRequest).user!);
+    if (scope) {
+      where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { storeId: { in: scope } }];
+    }
 
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 10));
@@ -582,6 +646,11 @@ app.post(
     const store = await prisma.store.findUnique({ where: { id: fields.storeId } });
     if (!store) {
       res.status(400).json({ error: "店铺不存在" });
+      return;
+    }
+    const createScope = await allowedStoreIds((req as AuthedRequest).user!);
+    if (createScope && !createScope.includes(fields.storeId)) {
+      res.status(403).json({ error: "没有该店铺的操作权限" });
       return;
     }
 
@@ -629,6 +698,11 @@ app.put(
       res.status(400).json({ error: "该人员简历已发布，不能编辑信息，请先取消发布" });
       return;
     }
+    const editScope = await allowedStoreIds((req as AuthedRequest).user!);
+    if (editScope && (!editScope.includes(existing.storeId) || !editScope.includes(fields.storeId))) {
+      res.status(403).json({ error: "没有该店铺的操作权限" });
+      return;
+    }
 
     const [, , candidate] = await prisma.$transaction([
       prisma.workExperience.deleteMany({ where: { candidateId: id } }),
@@ -661,6 +735,11 @@ app.delete(
       res.status(404).json({ error: "人员不存在" });
       return;
     }
+    const delScope = await allowedStoreIds((req as AuthedRequest).user!);
+    if (delScope && !delScope.includes(existing.storeId)) {
+      res.status(403).json({ error: "没有该店铺的操作权限" });
+      return;
+    }
     await prisma.candidate.delete({ where: { id } });
     res.json({ ok: true });
   }),
@@ -682,8 +761,9 @@ app.post(
       res.status(400).json({ error: "参数不合法" });
       return;
     }
+    const scope = await allowedStoreIds((req as AuthedRequest).user!);
     const rows = await prisma.candidate.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, ...(scope ? { storeId: { in: scope } } : {}) },
       select: { id: true, resumeToken: true },
     });
     const unpublished = rows.filter((r) => !r.resumeToken);
@@ -708,7 +788,10 @@ app.post(
       res.status(400).json({ error: "参数不合法" });
       return;
     }
-    const r = await prisma.candidate.deleteMany({ where: { id: { in: ids } } });
+    const scope = await allowedStoreIds((req as AuthedRequest).user!);
+    const r = await prisma.candidate.deleteMany({
+      where: { id: { in: ids }, ...(scope ? { storeId: { in: scope } } : {}) },
+    });
     res.json({ ok: true, deleted: r.count });
   }),
 );
@@ -725,6 +808,11 @@ app.post(
     const existing = await prisma.candidate.findUnique({ where: { id } });
     if (!existing) {
       res.status(404).json({ error: "人员不存在" });
+      return;
+    }
+    const pubScope = await allowedStoreIds((req as AuthedRequest).user!);
+    if (pubScope && !pubScope.includes(existing.storeId)) {
+      res.status(403).json({ error: "没有该店铺的操作权限" });
       return;
     }
     const token = existing.resumeToken ?? crypto.randomUUID();
@@ -747,6 +835,11 @@ app.post(
     const existing = await prisma.candidate.findUnique({ where: { id } });
     if (!existing) {
       res.status(404).json({ error: "人员不存在" });
+      return;
+    }
+    const unpubScope = await allowedStoreIds((req as AuthedRequest).user!);
+    if (unpubScope && !unpubScope.includes(existing.storeId)) {
+      res.status(403).json({ error: "没有该店铺的操作权限" });
       return;
     }
     if (existing.resumeToken) {
@@ -797,6 +890,11 @@ app.post(
     });
     if (!existing) {
       res.status(404).json({ error: "人员不存在" });
+      return;
+    }
+    const statusScope = await allowedStoreIds((req as AuthedRequest).user!);
+    if (statusScope && !statusScope.includes(existing.storeId)) {
+      res.status(403).json({ error: "没有该店铺的操作权限" });
       return;
     }
     switch (action) {

@@ -1,5 +1,10 @@
 export type Role = "admin" | "fahr" | "manager" | "hr";
 
+export interface UserScopeItem {
+  level: "brand" | "city" | "store";
+  nodeId: number;
+}
+
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "管理员",
   fahr: "FaHr",
@@ -25,6 +30,7 @@ export interface UserInfo {
   username: string;
   role: Role;
   createdAt: string;
+  scopes?: UserScopeItem[];
 }
 
 export interface CityNode {

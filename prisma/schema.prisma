@@ -81,14 +81,26 @@ model InterviewSlot {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique
+  id           Int         @id @default(autoincrement())
+  username     String      @unique
   passwordHash String
-  role         String    @default("user")
-  createdAt    DateTime  @default(now())
+  role         String      @default("user")
+  createdAt    DateTime    @default(now())
   sessions     Session[]
+  scopes       UserScope[]
 
   @@map("users")
+}
+
+model UserScope {
+  id     Int    @id @default(autoincrement())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+  level  String
+  nodeId Int
+
+  @@unique([userId, level, nodeId])
+  @@map("user_scopes")
 }
 
 model Session {
