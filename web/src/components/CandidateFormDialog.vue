@@ -8,6 +8,7 @@ const props = defineProps<{
   modelValue: boolean;
   brands: BrandNode[];
   candidate: CandidateRow | null;
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -200,27 +201,29 @@ async function submit() {
 <template>
   <el-dialog
     v-model="visible"
-    :title="candidate ? `编辑人员：${candidate.name}` : '新增人员'"
+    :title="readonly ? `人员详情：${candidate?.name ?? ''}` : candidate ? `编辑人员：${candidate.name}` : '新增人员'"
     width="680px"
     top="5vh"
     destroy-on-close
   >
-    <el-form label-width="90px" label-position="left">
+    <el-form label-width="90px" label-position="left" :disabled="readonly">
       <el-form-item label="照片">
         <div class="photo-row">
           <el-avatar v-if="form.photo" :size="64" :src="withBase(form.photo)" />
-          <el-upload
-            :show-file-list="false"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            :http-request="uploadPhoto"
-          >
-            <el-button :loading="uploading">
-              {{ form.photo ? "更换照片" : "上传照片" }}
+          <template v-if="!readonly">
+            <el-upload
+              :show-file-list="false"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              :http-request="uploadPhoto"
+            >
+              <el-button :loading="uploading">
+                {{ form.photo ? "更换照片" : "上传照片" }}
+              </el-button>
+            </el-upload>
+            <el-button v-if="form.photo" link type="danger" @click="form.photo = ''">
+              移除照片
             </el-button>
-          </el-upload>
-          <el-button v-if="form.photo" link type="danger" @click="form.photo = ''">
-            移除照片
-          </el-button>
+          </template>
         </div>
       </el-form-item>
 
@@ -265,7 +268,7 @@ async function submit() {
           <div v-for="(w, i) in form.workExperiences" :key="i" class="work-item">
             <div class="work-row">
               <el-input v-model="w.company" placeholder="公司名称" class="company-input" />
-              <el-button link type="danger" @click="removeWork(i)">删除</el-button>
+              <el-button v-if="!readonly" link type="danger" @click="removeWork(i)">删除</el-button>
             </div>
             <div class="work-row">
               <el-date-picker
@@ -292,7 +295,7 @@ async function submit() {
               class="work-desc"
             />
           </div>
-          <el-button link type="primary" @click="addWork">+ 添加工作经历</el-button>
+          <el-button v-if="!readonly" link type="primary" @click="addWork">+ 添加工作经历</el-button>
         </div>
       </el-form-item>
 
@@ -309,9 +312,9 @@ async function submit() {
               end-placeholder="结束时间"
               class="range-picker"
             />
-            <el-button link type="danger" @click="removeSlot(i)">删除</el-button>
+            <el-button v-if="!readonly" link type="danger" @click="removeSlot(i)">删除</el-button>
           </div>
-          <el-button link type="primary" @click="addSlot">+ 添加时间段</el-button>
+          <el-button v-if="!readonly" link type="primary" @click="addSlot">+ 添加时间段</el-button>
         </div>
       </el-form-item>
 
@@ -321,8 +324,8 @@ async function submit() {
     </el-form>
 
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="saving" :disabled="uploading" @click="submit">
+      <el-button @click="visible = false">{{ readonly ? "关闭" : "取消" }}</el-button>
+      <el-button v-if="!readonly" type="primary" :loading="saving" :disabled="uploading" @click="submit">
         保存
       </el-button>
     </template>

@@ -20,6 +20,7 @@ const total = ref(0);
 
 const dialogVisible = ref(false);
 const editingCandidate = ref<CandidateRow | null>(null);
+const previewMode = ref(false);
 
 const filterCascaderProps = { value: "id", label: "name", checkStrictly: true };
 
@@ -101,6 +102,7 @@ function handleSizeChange(s: number) {
 
 function openCreate() {
   editingCandidate.value = null;
+  previewMode.value = false;
   dialogVisible.value = true;
 }
 
@@ -125,6 +127,13 @@ async function handlePublish(row: CandidateRow) {
 
 function openEdit(row: CandidateRow) {
   editingCandidate.value = row;
+  previewMode.value = false;
+  dialogVisible.value = true;
+}
+
+function openPreview(row: CandidateRow) {
+  editingCandidate.value = row;
+  previewMode.value = true;
   dialogVisible.value = true;
 }
 
@@ -257,7 +266,8 @@ onMounted(() => {
             <div class="op-btns">
               <el-button v-if="!row.published" link type="success" class="op-btn op-first" @click="handlePublish(row)">发布</el-button>
               <el-button v-else link type="warning" class="op-btn op-first" @click="handleUnpublish(row)">取消发布</el-button>
-              <el-button link type="primary" class="op-btn" :disabled="row.published" @click="openEdit(row)">编辑</el-button>
+              <el-button v-if="row.published" link type="primary" class="op-btn" @click="openPreview(row)">预览</el-button>
+              <el-button v-else link type="primary" class="op-btn" @click="openEdit(row)">编辑</el-button>
               <el-button link type="danger" class="op-btn" @click="handleDelete(row)">删除</el-button>
             </div>
           </template>
@@ -281,6 +291,7 @@ onMounted(() => {
       v-model="dialogVisible"
       :brands="brands"
       :candidate="editingCandidate"
+      :readonly="previewMode"
       @saved="load"
     />
   </div>
