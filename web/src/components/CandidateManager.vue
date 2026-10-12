@@ -266,12 +266,11 @@ onMounted(() => {
 <template>
   <div class="page">
     <el-card class="filter-card" shadow="never">
-      <div class="filter-bar">
+      <div class="filter-grid">
         <el-input
           v-model="keywordInput"
           placeholder="搜索人员姓名…"
           clearable
-          class="keyword-input"
           @keyup.enter="handleSearch"
         />
         <el-cascader
@@ -280,9 +279,8 @@ onMounted(() => {
           :props="filterCascaderProps"
           placeholder="品牌 / 城市 / 店铺"
           clearable
-          class="filter-cascader"
         />
-        <el-select v-model="statusInput" placeholder="状态" clearable class="filter-status">
+        <el-select v-model="statusInput" placeholder="状态" clearable>
           <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <el-date-picker
@@ -292,9 +290,10 @@ onMounted(() => {
           range-separator="至"
           start-placeholder="更新开始"
           end-placeholder="更新结束"
-          class="filter-date"
         />
-        <el-button type="primary" class="search-btn" @click="handleSearch">搜索</el-button>
+      </div>
+      <div class="filter-actions">
+        <el-button type="primary" @click="handleSearch">搜索</el-button>
       </div>
     </el-card>
 
@@ -452,26 +451,22 @@ onMounted(() => {
   font-size: 15px;
   font-weight: 600;
 }
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  max-width: 760px;
 }
-.keyword-input {
-  width: 220px;
+.filter-grid :deep(.el-input),
+.filter-grid :deep(.el-select),
+.filter-grid :deep(.el-date-editor) {
+  width: 100%;
 }
-.filter-cascader {
-  width: 260px;
-}
-.filter-status {
-  width: 140px;
-}
-.filter-date {
-  width: 260px;
-}
-.search-btn {
-  margin-left: auto;
+.filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  max-width: 760px;
 }
 .pager {
   display: flex;
