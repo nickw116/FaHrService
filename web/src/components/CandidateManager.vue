@@ -14,9 +14,15 @@ const keywordInput = ref("");
 const keyword = ref("");
 const filterPath = ref<number[] | undefined>();
 const appliedPath = ref<number[] | undefined>();
+const statusInput = ref("");
+const appliedStatus = ref("");
+const dateInput = ref<[string, string] | null>(null);
+const appliedDate = ref<[string, string] | null>(null);
 const page = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
+
+const statusOptions = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }));
 
 const dialogVisible = ref(false);
 const editingCandidate = ref<CandidateRow | null>(null);
@@ -135,6 +141,9 @@ async function load() {
     if (brandId) params.set("brandId", String(brandId));
     if (cityId) params.set("cityId", String(cityId));
     if (storeId) params.set("storeId", String(storeId));
+    if (appliedStatus.value) params.set("status", appliedStatus.value);
+    if (appliedDate.value?.[0]) params.set("updatedFrom", appliedDate.value[0]);
+    if (appliedDate.value?.[1]) params.set("updatedTo", appliedDate.value[1]);
     params.set("page", String(page.value));
     params.set("pageSize", String(pageSize.value));
     const d = await api<{ candidates: CandidateRow[]; total: number }>(
@@ -153,6 +162,8 @@ function handleSearch() {
   page.value = 1;
   keyword.value = keywordInput.value.trim();
   appliedPath.value = filterPath.value;
+  appliedStatus.value = statusInput.value;
+  appliedDate.value = dateInput.value;
   load();
 }
 
@@ -270,6 +281,18 @@ onMounted(() => {
           placeholder="品牌 / 城市 / 店铺"
           clearable
           class="filter-cascader"
+        />
+        <el-select v-model="statusInput" placeholder="状态" clearable class="filter-status">
+          <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+        <el-date-picker
+          v-model="dateInput"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          range-separator="至"
+          start-placeholder="更新开始"
+          end-placeholder="更新结束"
+          class="filter-date"
         />
         <el-button type="primary" class="search-btn" @click="handleSearch">搜索</el-button>
       </div>
@@ -439,6 +462,12 @@ onMounted(() => {
   width: 220px;
 }
 .filter-cascader {
+  width: 260px;
+}
+.filter-status {
+  width: 140px;
+}
+.filter-date {
   width: 260px;
 }
 .search-btn {

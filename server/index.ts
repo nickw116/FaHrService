@@ -504,6 +504,16 @@ function withPublished<T extends { resumeToken: string | null }>(c: T): Omit<T, 
   return { ...rest, published: Boolean(resumeToken) };
 }
 
+const CANDIDATE_STATUSES = [
+  "PENDING",
+  "ACCEPTED",
+  "DECLINED",
+  "PASSED",
+  "FAILED",
+  "ONBOARDED",
+  "ONBOARD_DECLINED",
+] as const;
+
 app.get(
   "/api/candidates",
   h(async (req, res) => {
@@ -511,12 +521,30 @@ app.get(
     const brandId = parseId(req.query.brandId);
     const cityId = parseId(req.query.cityId);
     const storeId = parseId(req.query.storeId);
+    const status = String(req.query.status ?? "");
+    // 日期-only 参数（YYYY-MM-DD）按服务器本地时区解析，避免被当成 UTC 零点
+    const parseDateParam = (value: unknown, endOfDay: boolean): Date | null => {
+      const s = String(value ?? "").trim();
+      if (!s) return null;
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(s)
+        ? new Date(`${s}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}`)
+        : new Date(s);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const updatedFrom = parseDateParam(req.query.updatedFrom, false);
+    const updatedTo = parseDateParam(req.query.updatedTo, true);
 
     const where: Prisma.CandidateWhereInput = {};
     if (keyword) where.name = { contains: keyword };
     if (storeId) where.storeId = storeId;
     else if (cityId) where.store = { cityId };
     else if (brandId) where.store = { city: { brandId } };
+    if ((CANDIDATE_STATUSES as readonly string[]).includes(status)) where.status = status;
+    if (updatedFrom || updatedTo) {
+      where.updatedAt = {};
+      if (updatedFrom) where.updatedAt.gte = updatedFrom;
+      if (updatedTo) where.updatedAt.lte = updatedTo;
+    }
     const role = (req as AuthedRequest).user?.role;
     // 店长/客户hr 只能看到已发布人员
     if (req.query.published === "1" || role === "manager" || role === "hr") {
