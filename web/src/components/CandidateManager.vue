@@ -22,6 +22,73 @@ const dialogVisible = ref(false);
 const editingCandidate = ref<CandidateRow | null>(null);
 const previewMode = ref(false);
 
+const selected = ref<CandidateRow[]>([]);
+const selectedUnpublished = computed(() => selected.value.filter((r) => !r.published).length);
+const batching = ref(false);
+
+function onSelectionChange(rows: CandidateRow[]) {
+  selected.value = rows;
+}
+
+async function handleBatchPublish() {
+  const targets = selected.value.filter((r) => !r.published);
+  if (!targets.length) {
+    ElMessage.info("所选人员均已发布");
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      `发布后 ${targets.length} 人的简历将在电子简历系统可见，确认发布？`,
+      "批量发布",
+      { type: "warning", confirmButtonText: "发布", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+  batching.value = true;
+  try {
+    await api("/api/candidates/batch-publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: targets.map((t) => t.id) }),
+    });
+    ElMessage.success(`已发布 ${targets.length} 人`);
+    load();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "批量发布失败");
+  } finally {
+    batching.value = false;
+  }
+}
+
+async function handleBatchDelete() {
+  const n = selected.value.length;
+  if (!n) return;
+  try {
+    await ElMessageBox.confirm(
+      `确定删除所选 ${n} 人吗？删除后不可恢复（含已发布人员的简历）。`,
+      "批量删除",
+      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+  batching.value = true;
+  try {
+    await api("/api/candidates/batch-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: selected.value.map((t) => t.id) }),
+    });
+    ElMessage.success(`已删除 ${n} 人`);
+    load();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "批量删除失败");
+  } finally {
+    batching.value = false;
+  }
+}
+
 const filterCascaderProps = { value: "id", label: "name", checkStrictly: true };
 
 const cascaderOptions = computed(() =>
@@ -211,10 +278,33 @@ onMounted(() => {
     <el-card class="table-card" shadow="never">
       <div class="toolbar">
         <span class="card-title">人员列表</span>
-        <el-button type="primary" @click="openCreate">+ 新增人员</el-button>
+        <div class="toolbar-actions">
+          <template v-if="selected.length">
+            <el-button
+              type="success"
+              plain
+              :loading="batching"
+              :disabled="!selectedUnpublished"
+              @click="handleBatchPublish"
+            >
+              批量发布 ({{ selectedUnpublished }})
+            </el-button>
+            <el-button type="danger" plain :loading="batching" @click="handleBatchDelete">
+              批量删除 ({{ selected.length }})
+            </el-button>
+          </template>
+          <el-button type="primary" @click="openCreate">+ 新增人员</el-button>
+        </div>
       </div>
       <div class="table-wrap">
-        <el-table v-loading="loading" :data="candidates" stripe height="100%">
+        <el-table
+          v-loading="loading"
+          :data="candidates"
+          stripe
+          height="100%"
+          @selection-change="onSelectionChange"
+        >
+          <el-table-column type="selection" width="45" />
         <el-table-column label="照片" width="70" align="center">
           <template #default="{ row }">
             <el-avatar :size="36" :src="row.photo ? withBase(row.photo) : undefined">{{ row.name.slice(0, 1) }}</el-avatar>
@@ -326,6 +416,14 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar-actions .el-button + .el-button {
+  margin-left: 0;
 }
 .card-title {
   font-size: 15px;

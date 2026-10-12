@@ -638,6 +638,53 @@ app.delete(
   }),
 );
 
+function parseIdList(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const ids = value.map(parseId);
+  if (ids.length === 0 || ids.length > 200 || ids.some((i) => i === null)) return null;
+  return ids as number[];
+}
+
+app.post(
+  "/api/candidates/batch-publish",
+  requireRole("admin", "fahr"),
+  h(async (req, res) => {
+    const ids = parseIdList((req.body as Record<string, unknown> | null)?.ids);
+    if (!ids) {
+      res.status(400).json({ error: "参数不合法" });
+      return;
+    }
+    const rows = await prisma.candidate.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, resumeToken: true },
+    });
+    const unpublished = rows.filter((r) => !r.resumeToken);
+    await prisma.$transaction(
+      unpublished.map((r) =>
+        prisma.candidate.update({
+          where: { id: r.id },
+          data: { resumeToken: crypto.randomUUID() },
+        }),
+      ),
+    );
+    res.json({ ok: true, published: unpublished.length });
+  }),
+);
+
+app.post(
+  "/api/candidates/batch-delete",
+  requireRole("admin", "fahr"),
+  h(async (req, res) => {
+    const ids = parseIdList((req.body as Record<string, unknown> | null)?.ids);
+    if (!ids) {
+      res.status(400).json({ error: "参数不合法" });
+      return;
+    }
+    const r = await prisma.candidate.deleteMany({ where: { id: { in: ids } } });
+    res.json({ ok: true, deleted: r.count });
+  }),
+);
+
 app.post(
   "/api/candidates/:id/resume-link",
   requireRole("admin", "fahr"),
