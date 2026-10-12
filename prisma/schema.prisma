@@ -45,6 +45,9 @@ model Candidate {
   phone           String           @default("")
   photo           String           @default("")
   remark          String           @default("")
+  status          String           @default("PENDING")
+  resumeToken     String?          @unique
+  acceptedSlotId  Int?
   store           Store            @relation(fields: [storeId], references: [id])
   storeId         Int
   workExperiences WorkExperience[]
@@ -75,4 +78,25 @@ model InterviewSlot {
   endAt       DateTime
 
   @@map("interview_slots")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  role         String    @default("user")
+  createdAt    DateTime  @default(now())
+  sessions     Session[]
+
+  @@map("users")
+}
+
+model Session {
+  token     String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@map("sessions")
 }

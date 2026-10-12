@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
 export default defineConfig({
-  base: "/faHr/",
+  base: "/",
   plugins: [vue()],
   resolve: {
     alias: {
@@ -13,9 +13,8 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/faHr/api": {
+      "/api": {
         target: "http://localhost:3001",
-        rewrite: (p) => p.replace(/^\/faHr/, ""),
       },
     },
   },

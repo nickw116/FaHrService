@@ -7,6 +7,17 @@ import multer from "multer";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { candidateInclude, parseCandidateInput } from "./candidateInput.js";
+import {
+  createSession,
+  ensureDefaultAdmin,
+  hashPassword,
+  publicUser,
+  requireAdmin,
+  requireAuth,
+  requireRole,
+  verifyPassword,
+  type AuthedRequest,
+} from "./auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -35,7 +46,14 @@ function parseId(value: unknown): number | null {
 
 app.get(
   "/api/org",
-  h(async (_req, res) => {
+  requireAuth,
+  h(async (req, res) => {
+    const role = (req as AuthedRequest).user?.role;
+    // 店长/客户hr 不算 HRS 内部用户，组织树只统计已发布人员
+    const publishedOnly = req.query.published === "1" || role === "manager" || role === "hr";
+    const storeInclude: Prisma.StoreInclude = publishedOnly
+      ? { _count: { select: { candidates: { where: { resumeToken: { not: null } } } } } }
+      : { _count: { select: { candidates: true } } };
     const brands = await prisma.brand.findMany({
       orderBy: { id: "asc" },
       include: {
@@ -44,7 +62,7 @@ app.get(
           include: {
             stores: {
               orderBy: { id: "asc" },
-              include: { _count: { select: { candidates: true } } },
+              include: storeInclude,
             },
           },
         },
@@ -66,6 +84,294 @@ function isDupError(e: unknown): boolean {
 function isMissingError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025";
 }
+
+// ---- 认证 ----
+
+app.post(
+  "/api/auth/login",
+  h(async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const username = String(body.username ?? "").trim();
+    const password = String(body.password ?? "");
+    const user = username ? await prisma.user.findUnique({ where: { username } }) : null;
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      res.status(401).json({ error: "用户名或密码错误" });
+      return;
+    }
+    const token = await createSession(user.id);
+    res.json({ token, user: publicUser(user) });
+  }),
+);
+
+// 照片静态资源保持公开（<img> 标签无法携带 Authorization 头，文件名为 UUID 不可枚举）
+app.use(
+  "/api/uploads",
+  express.static(uploadsDir, { immutable: true, maxAge: "365d" }),
+);
+
+// ---- 电子简历（候选人凭 token 公开访问，无需登录） ----
+
+const RESUME_SELECT = {
+  id: true,
+  name: true,
+  gender: true,
+  age: true,
+  phone: true,
+  photo: true,
+  status: true,
+  acceptedSlotId: true,
+  store: { select: { name: true, city: { select: { name: true, brand: { select: { name: true } } } } } },
+  workExperiences: { orderBy: { id: "asc" as const } },
+  interviewSlots: { orderBy: { startAt: "asc" as const } },
+};
+
+app.get(
+  "/api/resume/:token",
+  h(async (req, res) => {
+    const candidate = await prisma.candidate.findUnique({
+      where: { resumeToken: req.params.token },
+      select: RESUME_SELECT,
+    });
+    if (!candidate) {
+      res.status(404).json({ error: "链接无效或已过期" });
+      return;
+    }
+    res.json({ candidate });
+  }),
+);
+
+app.post(
+  "/api/resume/:token/interview-response",
+  h(async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const accept = Boolean(body.accept);
+    const slotId = parseId(body.slotId);
+    const candidate = await prisma.candidate.findUnique({
+      where: { resumeToken: req.params.token },
+      include: { interviewSlots: true },
+    });
+    if (!candidate) {
+      res.status(404).json({ error: "链接无效或已过期" });
+      return;
+    }
+    if (candidate.status !== "PENDING") {
+      res.status(400).json({ error: "当前状态无法操作，请刷新页面" });
+      return;
+    }
+    if (accept) {
+      if (!slotId || !candidate.interviewSlots.some((s) => s.id === slotId)) {
+        res.status(400).json({ error: "请选择要接受的面试时间" });
+        return;
+      }
+      await prisma.candidate.update({
+        where: { id: candidate.id },
+        data: { status: "ACCEPTED", acceptedSlotId: slotId },
+      });
+    } else {
+      await prisma.candidate.update({
+        where: { id: candidate.id },
+        data: { status: "DECLINED" },
+      });
+    }
+    res.json({ ok: true });
+  }),
+);
+
+app.post(
+  "/api/resume/:token/onboard-response",
+  h(async (req, res) => {
+    const accept = Boolean((req.body ?? {}).accept);
+    const candidate = await prisma.candidate.findUnique({
+      where: { resumeToken: req.params.token },
+    });
+    if (!candidate) {
+      res.status(404).json({ error: "链接无效或已过期" });
+      return;
+    }
+    if (candidate.status !== "PASSED") {
+      res.status(400).json({ error: "当前状态无法操作，请刷新页面" });
+      return;
+    }
+    await prisma.candidate.update({
+      where: { id: candidate.id },
+      data: { status: accept ? "ONBOARDED" : "ONBOARD_DECLINED" },
+    });
+    res.json({ ok: true });
+  }),
+);
+
+// 以下 /api 路由全部要求登录
+app.use("/api", requireAuth);
+
+function bearerToken(req: Request): string {
+  return /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1]?.trim() ?? "";
+}
+
+app.get(
+  "/api/auth/me",
+  h(async (req, res) => {
+    res.json({ user: publicUser((req as AuthedRequest).user!) });
+  }),
+);
+
+app.post(
+  "/api/auth/logout",
+  h(async (req, res) => {
+    const token = bearerToken(req);
+    if (token) await prisma.session.deleteMany({ where: { token } });
+    res.json({ ok: true });
+  }),
+);
+
+app.post(
+  "/api/auth/change-password",
+  h(async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const oldPassword = String(body.oldPassword ?? "");
+    const newPassword = String(body.newPassword ?? "");
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: "新密码至少 6 位" });
+      return;
+    }
+    const user = (req as AuthedRequest).user!;
+    if (!verifyPassword(oldPassword, user.passwordHash)) {
+      res.status(400).json({ error: "原密码错误" });
+      return;
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: hashPassword(newPassword) },
+    });
+    await prisma.session.deleteMany({
+      where: { userId: user.id, token: { not: bearerToken(req) } },
+    });
+    res.json({ ok: true });
+  }),
+);
+
+// ---- 用户管理（仅管理员） ----
+
+function validRole(value: unknown): "admin" | "fahr" | "manager" | "hr" | null {
+  return value === "admin" || value === "fahr" || value === "manager" || value === "hr"
+    ? value
+    : null;
+}
+
+app.get(
+  "/api/users",
+  requireAdmin,
+  h(async (_req, res) => {
+    const users = await prisma.user.findMany({ orderBy: { id: "asc" } });
+    res.json({ users: users.map(publicUser) });
+  }),
+);
+
+app.post(
+  "/api/users",
+  requireAdmin,
+  h(async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const username = String(body.username ?? "").trim();
+    const password = String(body.password ?? "");
+    const role = validRole(body.role ?? "user");
+    if (!username || password.length < 6 || !role) {
+      res.status(400).json({ error: "参数不合法（用户名必填，密码至少 6 位，角色为 admin/user）" });
+      return;
+    }
+    try {
+      const user = await prisma.user.create({
+        data: { username, passwordHash: hashPassword(password), role },
+      });
+      res.status(201).json({ user: publicUser(user) });
+    } catch (e) {
+      if (isDupError(e)) {
+        res.status(400).json({ error: "用户名已存在" });
+        return;
+      }
+      throw e;
+    }
+  }),
+);
+
+app.put(
+  "/api/users/:id",
+  requireAdmin,
+  h(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: "无效的用户 ID" });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const data: { role?: string; passwordHash?: string } = {};
+    if (body.role !== undefined) {
+      const role = validRole(body.role);
+      if (!role) {
+        res.status(400).json({ error: "角色只能为 admin/user" });
+        return;
+      }
+      data.role = role;
+    }
+    if (body.password !== undefined && String(body.password) !== "") {
+      if (String(body.password).length < 6) {
+        res.status(400).json({ error: "密码至少 6 位" });
+        return;
+      }
+      data.passwordHash = hashPassword(String(body.password));
+    }
+    if (!data.role && !data.passwordHash) {
+      res.status(400).json({ error: "没有需要修改的字段" });
+      return;
+    }
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      res.status(404).json({ error: "用户不存在" });
+      return;
+    }
+    if (target.role === "admin" && data.role === "user") {
+      const otherAdmins = await prisma.user.count({ where: { role: "admin", id: { not: id } } });
+      if (otherAdmins === 0) {
+        res.status(400).json({ error: "至少需要保留一个管理员" });
+        return;
+      }
+    }
+    const user = await prisma.user.update({ where: { id }, data });
+    if (data.passwordHash) {
+      await prisma.session.deleteMany({ where: { userId: id } });
+    }
+    res.json({ user: publicUser(user) });
+  }),
+);
+
+app.delete(
+  "/api/users/:id",
+  requireAdmin,
+  h(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: "无效的用户 ID" });
+      return;
+    }
+    if ((req as AuthedRequest).user!.id === id) {
+      res.status(400).json({ error: "不能删除当前登录账号" });
+      return;
+    }
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      res.status(404).json({ error: "用户不存在" });
+      return;
+    }
+    if (target.role === "admin") {
+      const otherAdmins = await prisma.user.count({ where: { role: "admin", id: { not: id } } });
+      if (otherAdmins === 0) {
+        res.status(400).json({ error: "至少需要保留一个管理员" });
+        return;
+      }
+    }
+    await prisma.user.delete({ where: { id } });
+    res.json({ ok: true });
+  }),
+);
 
 const ORG_LEVELS = {
   brands: {
@@ -104,6 +410,7 @@ function parseLevel(value: string): OrgLevel | null {
 
 app.post(
   "/api/org/:level",
+  requireRole("admin", "fahr"),
   h(async (req, res) => {
     const level = parseLevel(req.params.level);
     const name = validName(req.body);
@@ -136,6 +443,7 @@ app.post(
 
 app.put(
   "/api/org/:level/:id",
+  requireRole("admin", "fahr"),
   h(async (req, res) => {
     const level = parseLevel(req.params.level);
     const id = parseId(req.params.id);
@@ -164,6 +472,7 @@ app.put(
 
 app.delete(
   "/api/org/:level/:id",
+  requireRole("admin", "fahr"),
   h(async (req, res) => {
     const level = parseLevel(req.params.level);
     const id = parseId(req.params.id);
@@ -190,6 +499,11 @@ app.delete(
   }),
 );
 
+function withPublished<T extends { resumeToken: string | null }>(c: T): Omit<T, "resumeToken"> & { published: boolean } {
+  const { resumeToken, ...rest } = c;
+  return { ...rest, published: Boolean(resumeToken) };
+}
+
 app.get(
   "/api/candidates",
   h(async (req, res) => {
@@ -203,11 +517,16 @@ app.get(
     if (storeId) where.storeId = storeId;
     else if (cityId) where.store = { cityId };
     else if (brandId) where.store = { city: { brandId } };
+    const role = (req as AuthedRequest).user?.role;
+    // 店长/客户hr 只能看到已发布人员
+    if (req.query.published === "1" || role === "manager" || role === "hr") {
+      where.resumeToken = { not: null };
+    }
 
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 10));
 
-    const [total, candidates] = await Promise.all([
+    const [total, rows] = await Promise.all([
       prisma.candidate.count({ where }),
       prisma.candidate.findMany({
         where,
@@ -217,12 +536,13 @@ app.get(
         take: pageSize,
       }),
     ]);
-    res.json({ candidates, total, page, pageSize });
+    res.json({ candidates: rows.map(withPublished), total, page, pageSize });
   }),
 );
 
 app.post(
   "/api/candidates",
+  requireRole("admin", "fahr"),
   h(async (req, res) => {
     const parsed = parseCandidateInput(req.body);
     if ("error" in parsed) {
@@ -245,12 +565,13 @@ app.post(
       },
       include: candidateInclude,
     });
-    res.status(201).json({ candidate });
+    res.status(201).json({ candidate: withPublished(candidate) });
   }),
 );
 
 app.put(
   "/api/candidates/:id",
+  requireRole("admin", "fahr"),
   h(async (req, res) => {
     const id = parseId(req.params.id);
     if (!id) {
@@ -276,6 +597,10 @@ app.put(
       res.status(404).json({ error: "人员不存在" });
       return;
     }
+    if (existing.resumeToken) {
+      res.status(400).json({ error: "该人员简历已发布，不能编辑信息，请先取消发布" });
+      return;
+    }
 
     const [, , candidate] = await prisma.$transaction([
       prisma.workExperience.deleteMany({ where: { candidateId: id } }),
@@ -290,12 +615,13 @@ app.put(
         include: candidateInclude,
       }),
     ]);
-    res.json({ candidate });
+    res.json({ candidate: withPublished(candidate) });
   }),
 );
 
 app.delete(
   "/api/candidates/:id",
+  requireRole("admin", "fahr"),
   h(async (req, res) => {
     const id = parseId(req.params.id);
     if (!id) {
@@ -308,6 +634,152 @@ app.delete(
       return;
     }
     await prisma.candidate.delete({ where: { id } });
+    res.json({ ok: true });
+  }),
+);
+
+app.post(
+  "/api/candidates/:id/resume-link",
+  requireRole("admin", "fahr"),
+  h(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: "无效的人员 ID" });
+      return;
+    }
+    const existing = await prisma.candidate.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: "人员不存在" });
+      return;
+    }
+    const token = existing.resumeToken ?? crypto.randomUUID();
+    if (!existing.resumeToken) {
+      await prisma.candidate.update({ where: { id }, data: { resumeToken: token } });
+    }
+    res.json({ path: `/r/${token}` });
+  }),
+);
+
+app.post(
+  "/api/candidates/:id/unpublish",
+  requireRole("admin", "fahr"),
+  h(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: "无效的人员 ID" });
+      return;
+    }
+    const existing = await prisma.candidate.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: "人员不存在" });
+      return;
+    }
+    if (existing.resumeToken) {
+      await prisma.candidate.update({ where: { id }, data: { resumeToken: null } });
+    }
+    res.json({ ok: true });
+  }),
+);
+
+const STATUS_ACTIONS = [
+  "accept-interview",
+  "decline-interview",
+  "pass",
+  "fail",
+  "onboard",
+  "decline-onboard",
+  "reset",
+] as const;
+
+// 店长只能操作约面确认和面试结果；入职确认、重置仅管理员和 fahr
+const STATUS_ACTION_ROLES: Record<(typeof STATUS_ACTIONS)[number], string[]> = {
+  "accept-interview": ["admin", "fahr", "manager"],
+  "decline-interview": ["admin", "fahr", "manager"],
+  pass: ["admin", "fahr", "manager"],
+  fail: ["admin", "fahr", "manager"],
+  onboard: ["admin", "fahr"],
+  "decline-onboard": ["admin", "fahr"],
+  reset: ["admin", "fahr"],
+};
+
+app.post(
+  "/api/candidates/:id/status",
+  h(async (req, res) => {
+    const id = parseId(req.params.id);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const action = String(body.action ?? "") as (typeof STATUS_ACTIONS)[number];
+    if (!id || !STATUS_ACTIONS.includes(action)) {
+      res.status(400).json({ error: "参数不合法" });
+      return;
+    }
+    if (!STATUS_ACTION_ROLES[action].includes((req as AuthedRequest).user?.role ?? "")) {
+      res.status(403).json({ error: "没有操作权限" });
+      return;
+    }
+    const existing = await prisma.candidate.findUnique({
+      where: { id },
+      include: { interviewSlots: true },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "人员不存在" });
+      return;
+    }
+    switch (action) {
+      case "reset":
+        await prisma.candidate.update({
+          where: { id },
+          data: { status: "PENDING", acceptedSlotId: null },
+        });
+        break;
+      case "accept-interview": {
+        if (existing.status !== "PENDING" && existing.status !== "DECLINED") {
+          res.status(400).json({ error: "当前状态无法确认约面" });
+          return;
+        }
+        const slotId = parseId(body.slotId);
+        if (!slotId || !existing.interviewSlots.some((s) => s.id === slotId)) {
+          res.status(400).json({ error: "请选择面试时间" });
+          return;
+        }
+        await prisma.candidate.update({
+          where: { id },
+          data: { status: "ACCEPTED", acceptedSlotId: slotId },
+        });
+        break;
+      }
+      case "decline-interview": {
+        if (existing.status !== "PENDING") {
+          res.status(400).json({ error: "当前状态无法拒绝约面" });
+          return;
+        }
+        await prisma.candidate.update({ where: { id }, data: { status: "DECLINED" } });
+        break;
+      }
+      case "pass":
+      case "fail": {
+        if (existing.status !== "ACCEPTED") {
+          res.status(400).json({ error: "候选人还未确认面试时间" });
+          return;
+        }
+        await prisma.candidate.update({
+          where: { id },
+          data: { status: action === "pass" ? "PASSED" : "FAILED" },
+        });
+        break;
+      }
+      case "onboard":
+      case "decline-onboard": {
+        if (existing.status !== "PASSED") {
+          res.status(400).json({ error: "面试通过后才能确认入职" });
+          return;
+        }
+        await prisma.candidate.update({
+          where: { id },
+          data: { status: action === "onboard" ? "ONBOARDED" : "ONBOARD_DECLINED" },
+        });
+        break;
+      }
+    }
     res.json({ ok: true });
   }),
 );
@@ -332,7 +804,7 @@ const upload = multer({
   },
 });
 
-app.post("/api/upload", upload.single("file"), (req, res) => {
+app.post("/api/upload", requireRole("admin", "fahr"), upload.single("file"), (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: "缺少上传文件或格式不支持（仅 JPG/PNG/GIF/WebP）" });
     return;
@@ -340,27 +812,19 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
   res.json({ url: `/api/uploads/${req.file.filename}` });
 });
 
-app.use(
-  "/api/uploads",
-  express.static(uploadsDir, { immutable: true, maxAge: "365d" }),
-);
-
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "接口不存在" });
 });
 
 if (isProd) {
   const distDir = path.join(rootDir, "web", "dist");
-  app.use("/faHr", express.static(distDir));
+  app.use("/", express.static(distDir));
   app.use((req, res, next) => {
-    if (req.method === "GET" && req.path.startsWith("/faHr")) {
+    if (req.method === "GET" && !req.path.startsWith("/api")) {
       res.sendFile(path.join(distDir, "index.html"));
       return;
     }
     next();
-  });
-  app.get("/", (_req, res) => {
-    res.redirect("/faHr/");
   });
 }
 
@@ -372,6 +836,8 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
   res.status(500).json({ error: "服务器内部错误" });
 });
+
+await ensureDefaultAdmin();
 
 app.listen(PORT, () => {
   console.log(`FaHRService ${isProd ? "(生产模式)" : "(开发 API)"} 运行在 http://localhost:${PORT}`);

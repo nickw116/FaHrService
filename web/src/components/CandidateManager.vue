@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api, withBase } from "../api";
 import type { BrandNode, CandidateRow } from "../types";
+import { STATUS_LABEL, STATUS_TAG } from "../status";
 import CandidateFormDialog from "./CandidateFormDialog.vue";
 
 const brands = ref<BrandNode[]>([]);
@@ -103,9 +104,51 @@ function openCreate() {
   dialogVisible.value = true;
 }
 
+async function handlePublish(row: CandidateRow) {
+  try {
+    await ElMessageBox.confirm(`发布后「${row.name}」的简历将在电子简历系统中可见，确认发布？`, "发布简历", {
+      type: "warning",
+      confirmButtonText: "发布",
+      cancelButtonText: "取消",
+    });
+  } catch {
+    return;
+  }
+  try {
+    await api(`/api/candidates/${row.id}/resume-link`, { method: "POST" });
+    ElMessage.success("已发布");
+    load();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "发布失败");
+  }
+}
+
 function openEdit(row: CandidateRow) {
   editingCandidate.value = row;
   dialogVisible.value = true;
+}
+
+async function handleUnpublish(row: CandidateRow) {
+  try {
+    await ElMessageBox.confirm(
+      `取消发布后「${row.name}」将从电子简历系统下线，确定取消发布？`,
+      "取消发布",
+      {
+        type: "warning",
+        confirmButtonText: "取消发布",
+        cancelButtonText: "再想想",
+      },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await api(`/api/candidates/${row.id}/unpublish`, { method: "POST" });
+    ElMessage.success("已取消发布");
+    load();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "操作失败");
+  }
 }
 
 async function handleDelete(row: CandidateRow) {
@@ -199,13 +242,24 @@ onMounted(() => {
         <el-table-column label="备注" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || "—" }}</template>
         </el-table-column>
+        <el-table-column label="状态" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="STATUS_TAG[row.status] ?? 'info'" size="small">
+              {{ STATUS_LABEL[row.status] ?? row.status }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="更新时间" width="160">
           <template #default="{ row }">{{ fmtTime(row.updatedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="110" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <div class="op-btns">
+              <el-button v-if="!row.published" link type="success" class="op-btn op-first" @click="handlePublish(row)">发布</el-button>
+              <el-button v-else link type="warning" class="op-btn op-first" @click="handleUnpublish(row)">取消发布</el-button>
+              <el-button link type="primary" class="op-btn" :disabled="row.published" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" class="op-btn" @click="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -273,5 +327,21 @@ onMounted(() => {
 }
 .slot-more {
   color: #909399;
+}
+.op-btns {
+  display: flex;
+  align-items: center;
+}
+.op-btn {
+  margin-left: 0;
+  padding: 0;
+  justify-content: center;
+}
+.op-first {
+  width: 60px;
+  flex-shrink: 0;
+}
+.op-btn:not(.op-first) {
+  width: 44px;
 }
 </style>
