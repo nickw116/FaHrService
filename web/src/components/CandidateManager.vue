@@ -16,6 +16,8 @@ const filterPath = ref<number[] | undefined>();
 const appliedPath = ref<number[] | undefined>();
 const statusInput = ref("");
 const appliedStatus = ref("");
+const publishInput = ref("");
+const appliedPublish = ref("");
 const dateInput = ref<[string, string] | null>(null);
 const appliedDate = ref<[string, string] | null>(null);
 const page = ref(1);
@@ -23,6 +25,10 @@ const pageSize = ref(10);
 const total = ref(0);
 
 const statusOptions = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }));
+const publishOptions = [
+  { value: "1", label: "已发布" },
+  { value: "0", label: "未发布" },
+];
 
 const dialogVisible = ref(false);
 const editingCandidate = ref<CandidateRow | null>(null);
@@ -142,6 +148,7 @@ async function load() {
     if (cityId) params.set("cityId", String(cityId));
     if (storeId) params.set("storeId", String(storeId));
     if (appliedStatus.value) params.set("status", appliedStatus.value);
+    if (appliedPublish.value) params.set("published", appliedPublish.value);
     if (appliedDate.value?.[0]) params.set("updatedFrom", appliedDate.value[0]);
     if (appliedDate.value?.[1]) params.set("updatedTo", appliedDate.value[1]);
     params.set("page", String(page.value));
@@ -163,6 +170,7 @@ function handleSearch() {
   keyword.value = keywordInput.value.trim();
   appliedPath.value = filterPath.value;
   appliedStatus.value = statusInput.value;
+  appliedPublish.value = publishInput.value;
   appliedDate.value = dateInput.value;
   load();
 }
@@ -282,6 +290,9 @@ onMounted(() => {
         />
         <el-select v-model="statusInput" placeholder="状态" clearable>
           <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+        <el-select v-model="publishInput" placeholder="发布状态" clearable>
+          <el-option v-for="o in publishOptions" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <el-date-picker
           v-model="dateInput"

@@ -608,6 +608,8 @@ app.get(
     // 店长/客户hr 只能看到已发布人员
     if (req.query.published === "1" || role === "manager" || role === "hr") {
       where.resumeToken = { not: null };
+    } else if (req.query.published === "0") {
+      where.resumeToken = null;
     }
     // 非管理员只能看到被分配店铺的人员
     const scope = await allowedStoreIds((req as AuthedRequest).user!);
