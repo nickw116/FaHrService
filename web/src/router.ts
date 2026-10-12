@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from "vue-router";
-import { getToken, getUser, isResumeOnlyRole, RESUME_URL } from "./auth";
+import { getToken, getUser, isResumeOnlyRole } from "./auth";
 import LoginPage from "./pages/LoginPage.vue";
 import ResumePage from "./pages/ResumePage.vue";
+import NoAccessPage from "./pages/NoAccessPage.vue";
 import MainLayout from "./components/MainLayout.vue";
 import CandidateManager from "./components/CandidateManager.vue";
 import OrgManager from "./components/OrgManager.vue";
@@ -22,6 +23,7 @@ export const router = createRouter({
         { path: "users", component: UserManager, meta: { title: "用户管理", admin: true } },
       ],
     },
+    { path: "/no-access", component: NoAccessPage, meta: { title: "没有访问权限" } },
     { path: "/:pathMatch(.*)*", redirect: "/personnel" },
   ],
 });
@@ -30,17 +32,15 @@ router.beforeEach((to) => {
   const token = getToken();
   if (to.meta.public) {
     if (to.path === "/login" && token && isResumeOnlyRole(getUser()?.role)) {
-      window.location.assign(RESUME_URL);
-      return false;
+      return "/no-access";
     }
     return to.path === "/login" && token ? "/" : true;
   }
   if (!token) {
     return { path: "/login", query: to.fullPath !== "/" ? { redirect: to.fullPath } : {} };
   }
-  if (isResumeOnlyRole(getUser()?.role)) {
-    window.location.assign(RESUME_URL);
-    return false;
+  if (isResumeOnlyRole(getUser()?.role) && to.path !== "/no-access") {
+    return "/no-access";
   }
   if (to.meta.admin && getUser()?.role !== "admin") {
     return "/personnel";
