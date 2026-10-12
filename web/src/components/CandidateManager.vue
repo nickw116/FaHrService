@@ -453,9 +453,8 @@ onMounted(() => {
 }
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  max-width: 760px;
 }
 .filter-grid :deep(.el-input),
 .filter-grid :deep(.el-select),
@@ -466,7 +465,6 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 12px;
-  max-width: 760px;
 }
 .pager {
   display: flex;
