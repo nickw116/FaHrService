@@ -186,7 +186,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
+  <div class="page">
     <el-card class="filter-card" shadow="never">
       <div class="filter-bar">
         <el-input
@@ -208,12 +208,13 @@ onMounted(() => {
       </div>
     </el-card>
 
-    <el-card shadow="never">
+    <el-card class="table-card" shadow="never">
       <div class="toolbar">
         <span class="card-title">人员列表</span>
         <el-button type="primary" @click="openCreate">+ 新增人员</el-button>
       </div>
-      <el-table v-loading="loading" :data="candidates" stripe>
+      <div class="table-wrap">
+        <el-table v-loading="loading" :data="candidates" stripe height="100%">
         <el-table-column label="照片" width="70" align="center">
           <template #default="{ row }">
             <el-avatar :size="36" :src="row.photo ? withBase(row.photo) : undefined">{{ row.name.slice(0, 1) }}</el-avatar>
@@ -272,7 +273,8 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-      </el-table>
+        </el-table>
+      </div>
       <div class="pager">
         <el-pagination
           v-model:current-page="page"
@@ -298,8 +300,26 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 92px);
+}
 .filter-card {
   margin-bottom: 16px;
+}
+.table-card {
+  flex: 1;
+  min-height: 0;
+}
+.table-card :deep(.el-card__body) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.table-wrap {
+  flex: 1;
+  min-height: 0;
 }
 .toolbar {
   display: flex;
