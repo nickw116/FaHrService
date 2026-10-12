@@ -20,4 +20,9 @@ body {
 .el-dialog {
   max-width: 94vw;
 }
+
+/* 主框架页面由内容区自行滚动，避免弹层展开时 body 出现滚动条 */
+body.app-shell {
+  overflow: hidden;
+}
 </style>

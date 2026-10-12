@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ArrowDown, OfficeBuilding, User, UserFilled } from "@element-plus/icons-vue";
@@ -15,6 +15,9 @@ const pwdDialogVisible = ref(false);
 
 const activeMenu = computed(() => route.path);
 const pageTitle = computed(() => String(route.meta.title ?? ""));
+
+onMounted(() => document.body.classList.add("app-shell"));
+onUnmounted(() => document.body.classList.remove("app-shell"));
 
 async function onCommand(command: string) {
   if (command === "password") {
@@ -85,7 +88,7 @@ async function onCommand(command: string) {
 
 <style scoped>
 .layout {
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .aside {
